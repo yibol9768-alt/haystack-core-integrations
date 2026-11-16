@@ -22,6 +22,7 @@ from haystack_integrations.components.generators.ollama.chat.chat_generator impo
     _build_chunk,
     _convert_chatmessage_to_ollama_format,
     _convert_chatmessages_to_ollama_format,
+    _convert_ollama_meta_to_openai_format,
     _convert_ollama_response_to_chatmessage,
 )
 
@@ -81,6 +82,7 @@ class TestUtils:
         assert _convert_chatmessage_to_ollama_format(message) == {
             "role": "tool",
             "content": tool_result,
+            "tool_name": "weather",
         }
 
     def test_convert_chatmessage_to_ollama_format_image(self):
@@ -325,6 +327,70 @@ class TestUtils:
         assert streaming_chunks[0].start is True
         assert streaming_chunks[1].start is False
         assert streaming_chunks[2].start is False
+
+    def test_convert_ollama_meta_to_openai_format_length(self):
+        assert _convert_ollama_meta_to_openai_format({"done_reason": "length"}) == {"finish_reason": "length"}
+
+    def test_handle_streaming_response_length_finish_reason(self):
+        ollama_chunks = [
+            ChatResponse(
+                model="qwen3:0.6b",
+                created_at="2025-07-31T15:27:09.265818Z",
+                done=False,
+                message=Message(role="assistant", content="Partial"),
+            ),
+            ChatResponse(
+                model="qwen3:0.6b",
+                created_at="2025-07-31T15:27:09.355211Z",
+                done=True,
+                done_reason="length",
+                prompt_eval_count=10,
+                eval_count=5,
+                message=Message(role="assistant", content=" answer"),
+            ),
+        ]
+
+        generator = OllamaChatGenerator()
+        streaming_chunks: list[StreamingChunk] = []
+
+        response = generator._handle_streaming_response(ollama_chunks, streaming_chunks.append)
+
+        assert streaming_chunks[0].finish_reason is None
+        assert streaming_chunks[1].finish_reason == "length"
+        assert response["replies"][0].meta["finish_reason"] == "length"
+
+    @pytest.mark.asyncio
+    async def test_handle_streaming_response_async_length_finish_reason(self):
+        ollama_chunks = [
+            ChatResponse(
+                model="qwen3:0.6b",
+                created_at="2025-07-31T15:27:09.265818Z",
+                done=False,
+                message=Message(role="assistant", content="Partial"),
+            ),
+            ChatResponse(
+                model="qwen3:0.6b",
+                created_at="2025-07-31T15:27:09.355211Z",
+                done=True,
+                done_reason="length",
+                prompt_eval_count=10,
+                eval_count=5,
+                message=Message(role="assistant", content=" answer"),
+            ),
+        ]
+
+        async def async_chunks():
+            for chunk in ollama_chunks:
+                yield chunk
+
+        generator = OllamaChatGenerator()
+        streaming_chunks: list[StreamingChunk] = []
+
+        response = await generator._handle_streaming_response_async(async_chunks(), streaming_chunks.append)
+
+        assert streaming_chunks[0].finish_reason is None
+        assert streaming_chunks[1].finish_reason == "length"
+        assert response["replies"][0].meta["finish_reason"] == "length"
 
     def test_handle_streaming_response_with_thinking(self):
         ollama_chunks = [

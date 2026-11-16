@@ -31,6 +31,7 @@ from ollama import AsyncClient, ChatResponse, Client, ResponseError
 
 FINISH_REASON_MAPPING: dict[str, FinishReason] = {
     "stop": "stop",
+    "length": "length",
     "tool_calls": "tool_calls",
     # we skip load and unload reasons
 }
@@ -90,6 +91,7 @@ def _convert_chatmessage_to_ollama_format(message: ChatMessage) -> dict[str, Any
     if tool_call_results:
         # Ollama does not provide a way to communicate errors in tool invocations, so we ignore the error field
         ollama_msg["content"] = tool_call_results[0].result
+        ollama_msg["tool_name"] = tool_call_results[0].origin.tool_name
         return ollama_msg
 
     if text_contents:
